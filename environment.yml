@@ -1,0 +1,21 @@
+name: qemarl
+channels:
+  - pytorch
+  - nvidia
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1
+  - numpy
+  - matplotlib
+  - tqdm
+  - pandas
+  - pip
+  - pip:
+    - pettingzoo
+    - supersuit
+    - pyqubo
+    - dwave-neal

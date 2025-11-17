@@ -2,31 +2,35 @@
 
 import torch
 import torch.nn as nn
-from torch.distributions.categorical import Categorical
 
-class ActorCritic(nn.Module):
-    def __init__(self, obs_shape, state_shape, action_size):
+class Q_ActorCritic(nn.Module):
+    def __init__(self, obs_shape, state_shape, n_agents, n_tasks):
         """
-        Actor-Critic Network for MAPPO.
-        The Critic now takes the global state as input.
+        Actor-Critic Network for Q-MAPPO.
+        The Actor now outputs a utility matrix.
 
         Args:
-            obs_shape (tuple): Shape of the agent's local observation.
+            obs_shape (tuple): Shape of a single agent's local observation.
             state_shape (tuple): Shape of the global state.
-            action_size (int): Number of discrete actions.
+            n_agents (int): Number of agents.
+            n_tasks (int): Number of tasks. The action space size is n_tasks + 1 (for 'idle').
         """
         super().__init__()
+        self.n_agents = n_agents
+        self.action_size = n_tasks + 1
 
-        # Actor: Processes local observations
+        # Actor: Takes stacked local observations and outputs a utility matrix
+        # Input shape: (batch_size, n_agents * obs_dim)
+        # Output shape: (batch_size, n_agents, action_size)
         self.actor = nn.Sequential(
-            nn.Linear(obs_shape[0], 128),
+            nn.Linear(n_agents * obs_shape[0], 256),
             nn.ReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(256, 256),
             nn.ReLU(),
-            nn.Linear(128, action_size),
+            nn.Linear(256, n_agents * self.action_size) # Output flat utility matrix
         )
 
-        # Critic: Processes global state
+        # Critic: Processes global state (same as MAPPO)
         self.critic = nn.Sequential(
             nn.Linear(state_shape[0], 256),
             nn.ReLU(),
@@ -35,37 +39,24 @@ class ActorCritic(nn.Module):
             nn.Linear(256, 1),
         )
 
-    def get_action(self, obs):
+    def get_utilities(self, stacked_obs):
         """
-        Get action from the actor network based on local observation.
+        Get utility matrix from the actor network.
         
         Args:
-            obs (torch.Tensor): Batch of local observations.
+            stacked_obs (torch.Tensor): Batch of stacked observations from all agents.
+                                       Shape: (batch_size, n_agents * obs_dim)
 
         Returns:
-            tuple: (action, log_prob, entropy)
+            torch.Tensor: Utility matrix of shape (batch_size, n_agents, action_size)
         """
-        logits = self.actor(obs)
-        probs = Categorical(logits=logits)
-        action = probs.sample()
-        return action, probs.log_prob(action), probs.entropy()
-    
-    def get_logprob_and_entropy(self, obs, action):
-        """
-        Get log probability and entropy for a given action.
-        """
-        logits = self.actor(obs)
-        probs = Categorical(logits=logits)
-        return probs.log_prob(action), probs.entropy()
+        flat_utilities = self.actor(stacked_obs)
+        # Reshape to (batch_size, n_agents, action_size)
+        utilities = flat_utilities.view(-1, self.n_agents, self.action_size)
+        return utilities
 
     def get_value(self, state):
         """
         Get state value from the critic network based on global state.
-
-        Args:
-            state (torch.Tensor): Batch of global states.
-
-        Returns:
-            torch.Tensor: State values.
         """
         return self.critic(state)

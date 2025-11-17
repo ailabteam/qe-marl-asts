@@ -56,6 +56,34 @@ class SatelliteEnv(ParallelEnv):
     def action_space(self, agent: AgentID):
         # Action: Choose which task to observe (from 0 to n_tasks-1) or do nothing (action n_tasks)
         return Discrete(self.n_tasks + 1)
+    
+    @functools.lru_cache(maxsize=None)
+    def state_space(self):
+        """Returns the shape of the global state."""
+        # Global state: [all_sat_pos, all_task_info]
+        # (N * 2 for satellite positions, M * 3 for task info)
+        state_size = self.n_agents * 2 + self.n_tasks * 3
+        return Box(low=-self.map_size, high=self.map_size, shape=(state_size,), dtype=np.float32)
+
+    def state(self) -> np.ndarray:
+        """Returns the global state of the environment."""
+        state_vector = np.zeros(self.state_space().shape, dtype=np.float32)
+        
+        # Satellite positions
+        state_vector[0 : self.n_agents * 2] = self.satellite_positions.flatten()
+        
+        # Task information
+        task_start_idx = self.n_agents * 2
+        for i, task_id in enumerate(self.task_list):
+            task = self.tasks[task_id]
+            if not task["completed"]:
+                state_vector[task_start_idx + i*3 : task_start_idx + (i+1)*3] = [
+                    task["position"][0],
+                    task["position"][1],
+                    task["priority"],
+                ]
+        return state_vector
+
 
     def reset(self, seed=None, options=None):
         self.agents = copy(self.possible_agents)
